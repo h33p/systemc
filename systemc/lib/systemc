@@ -1,0 +1,97 @@
+rootPath = ""
+
+local serviceList = {}
+
+libDir = fs.combine(rootPath, "/lib")
+binDir = fs.combine(rootPath, "/bin")
+etcDir = fs.combine(rootPath, "/etc")
+unitDir = fs.combine(etcDir, "/systemc/system")
+
+local function tobool( val )
+	if val == nil or val == false or val == 0 or val == "0" or val == "false" then return false end
+	return true
+end
+
+local function get_unit_info (path)
+
+	type = "simple"
+	execstart = ""
+	execstop = ""
+	execreload = ""
+	restart = false
+	remainafterexit = false
+	requiredby = {}
+	wantedby = {}
+	also = {}
+
+
+	h = fs.open("settings.cfg", "r")
+	
+	cont = true
+
+	while cont do
+		text = h.readLine()
+		if text == nil then
+			cont = false
+		else
+			arg, a = text:match("([^=]+)=([^=]+)")
+			if arg == "Type" then
+				type = a
+			elseif arg == "ExecStart" then
+				execstart = a
+			elseif arg == "ExecStop" then
+				execstop = a
+			elseif arg == "ExecReload" then
+				execreload = a
+			elseif arg == "Restart" then
+				restart = tobool(a)
+			elseif arg == "RemainAfterExit" then
+				remainafterexit = tobool(a)
+			elseif arg == "RequiredBy" then
+				for word in a:gmatch("%w+") do table.insert(requiredby, word) end	
+			elseif arg == "WantedBy" then
+				for word in a:gmatch("%w+") do table.insert(wantedbyt, word) end	
+			elseif arg == "Also" then
+				for word in a:gmatch("%w+") do table.insert(also, word) end	
+			end
+		end
+	end
+
+	h.close()
+	print(text)
+end
+
+function start_unit(name)
+	if fs.exists(fs.combine(unitDir, name)) or fs.exists(fs.combine(unitDir, name..".service")) then
+
+	end
+end
+
+function coroutine.start(func, ...)
+  if type(func) ~= "function" then return false end
+  local cr = coroutine.create(func)
+  coroutine.resume(cr, ...)
+	crList[cr] = true
+end
+
+function run(root)
+
+	rootPath = tostring(root)
+	
+	libDir = fs.combine(rootPath, "/lib")
+	binDir = fs.combine(rootPath, "/bin")
+	etcDir = fs.combine(rootPath, "/etc")
+
+	while true do
+	  local eventData = {coroutine.yield()}
+  	for key in pairs(serviceList) do
+    	coroutine.resume(key, unpack(eventData))
+  	if coroutine.status(key) == "dead" then serviceList[key] = nil end
+		end
+	end
+
+
+	while true do
+		sleep(0)
+	end
+end

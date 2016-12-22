@@ -1,0 +1,32 @@
+
+local sc_version = 1
+
+local runningProgram = shell.getRunningProgram()
+local programName = fs.getName(runningProgram)
+os.loadAPI(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "../lib/systemc"))
+--TLCO
+
+local a = _G.printError
+function _G.printError()
+	_G.printError=a
+	write("Starting version "..sc_version)
+	parallel.waitForAny(
+		function()
+			if term.isColour() then
+				os.run( {}, "/rom/programs/advanced/multishell")
+			else
+				os.run( {}, "/rom/programs/shell")
+			end
+			os.run( {}, "/rom/programs/shutdown")
+		end,
+		function()
+			local runningProgram = shell.getRunningProgram()
+			local programName = fs.getName(runningProgram)
+
+			systemc.run(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "../"))
+		end )
+
+end
+os.queueEvent("terminate")
+
+sleep (2)
