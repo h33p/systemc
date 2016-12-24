@@ -120,7 +120,7 @@ end
 
 -- Install lua parts of the os api
 function os.version()
-    return "CraftOS 1.7-Chroot"
+    return "SystemC-Nspawn 1.7"
 end
 
 function os.pullEventRaw( sFilter )
@@ -810,30 +810,45 @@ end
 
 -- Run the shell
 local ok, err = pcall( function()
+			print(__chroot.init)
 	if __chroot and __chroot.rednet ~= nil then
-    parallel.waitForAny( 
-        function()
-            if term.isColour() then
-                os.run( {}, "rom/programs/advanced/multishell" )
-            else
-                os.run( {}, "rom/programs/shell" )
-            end
-            os.run( {}, "rom/programs/shutdown" )
-        end )
+		if __chroot.init ~= nil then
+			local tS = {}
+			tS.getRunningProgram = function () return __chroot.init end
+			os.run( {shell = tS}, __chroot.init)
+		else
+    	parallel.waitForAny( 
+    	    function()
+    	        if term.isColour() then
+    	            os.run( {}, "rom/programs/advanced/multishell" )
+    	        else
+    	            os.run( {}, "rom/programs/shell" )
+    	        end
+    	        os.run( {}, "rom/programs/shutdown" )
+    	    end )
+		end
 	else
 
-    parallel.waitForAny( 
-        function()
-            if term.isColour() then
-                os.run( {}, "rom/programs/advanced/multishell" )
-            else
-                os.run( {}, "rom/programs/shell" )
-            end
-            os.run( {}, "rom/programs/shutdown" )
-        end,
-        function()
+		if __chroot.init ~= nil then
+			local tS = {}
+			tS.getRunningProgram = function () return __chroot.init end
+			parallel.waitForAny(
+				function () os.run( {shell = tS}, __chroot.init) end,
+				function () rednet.run() end )
+    else
+			parallel.waitForAny( 
+    	    function()
+    	        if term.isColour() then
+    	            os.run( {}, "rom/programs/advanced/multishell" )
+    	        else
+    	            os.run( {}, "rom/programs/shell" )
+    	        end
+    	        os.run( {}, "rom/programs/shutdown" )
+    	    end,
+    	    function()
             rednet.run()
-        end )
+    	    end )
+		end
 	end
 end )
 

@@ -1,6 +1,3 @@
--- Copyright (c) 2012 Lymia
--- Modified by Aurimas Blažulionis
-
 local tArgs = { ... }
 
 if systemc == nil then
@@ -8,15 +5,17 @@ if systemc == nil then
 end
 
 local biosPath = fs.combine(systemc.libDir, "systemc.d/bios.lua")
+local scPath = "/"
 
 if #tArgs < 1 then
-	print("Usage: systemc-nspawn [options] [path]")
+	print("Usage: systemc-nspawn [options]")
 	print("")
 	print("Options:")
 	print("-D directory to use. Must be specified")
-	print("-c prepare the container")
+	print("-c[c] prepare the container. With second c it gets cleared first")
 	print("-nR do not copy ROM")
 	print("-nS do not copy SystemC")
+	print("-scP SystemC path inside the container. Default is /")
 	print("-b invoke init instead of shell")
 	print("-p bios.lua path. Default is "..biosPath)
 	error("Invalid arguments")
@@ -30,7 +29,12 @@ local targetPath = "/../"
 for i, v in ipairs(tArgs) do
 	if tArgs[i] == "-D" then
 		targetPath = shell.resolve(tArgs[i+1])
+	elseif tArgs[i] == "-scP" then
+		scPath = tArgs[i]
 	elseif tArgs[i] == "-c" then
+		create = true
+	elseif tArgs[i] == "-cc" then
+		clean = true
 		create = true
 	elseif tArgs[i] == "-b" then
 		boot = true
@@ -43,7 +47,15 @@ for i, v in ipairs(tArgs) do
 	end
 end
 
+if boot and not fs.exists(fs.combine(targetPath, fs.combine(scPath, "/bin/init"))) then
+	error("Boot specified, but no init found!")
+end
 
+if clean == true then
+	if fs.exists(targetPath) then
+		fs.delete(targetPath)
+	end
+end
 
 if create == true then
 	
@@ -60,10 +72,11 @@ if create == true then
 	end
 	
 	if noSC == false then
-		fs.copy(systemc.binDir, fs.combine(targetPath, systemc.binDir))
-		fs.copy(systemc.libDir, fs.combine(targetPath, systemc.libDir))
-		fs.copy(systemc.confDir, fs.combine(targetPath, systemc.confDir))
+		fs.copy(systemc.binDir, fs.combine(fs.combine(targetPath, scPath), "/bin"))
+		fs.copy(systemc.libDir, fs.combine(fs.combine(targetPath, scPath), "/lib"))
+		fs.copy(systemc.etcDir, fs.combine(fs.combine(targetPath, scPath), "/etc"))
 	end
+	error("Exit")
 end
 
 
@@ -209,6 +222,9 @@ local function sandboxFunction(func)
 	table.fs = new_fs
 
 	local chroot = {}
+	if boot then
+		chroot.init = fs.combine(scPath, fs.combine(scPath, "/bin/init"))
+	end
 	chroot.rednet = rednet
 	chroot.peripheral = peripheral
 	table.__chroot = chroot
@@ -352,14 +368,10 @@ while reboot do
 
 	local bios = nil
 	local cerr = nil
-	if fs.exists(targetPath.."/rom/bios.lua") then
-		bios, cerr = loadstring(fs.open(targetPath.."/rom/bios.lua","r").readAll())
+	if fs.exists(biosPath) then
+		bios, cerr = loadstring(fs.open(biosPath,"r").readAll())
 	else
-		if fs.exists(shell.resolve("bios.lua")) then
-			bios, cerr = loadstring(fs.open(shell.resolve("bios.lua"),"r").readAll())
-		else
-			error("Bios not found!")
-		end
+		error("Bios not found!")
 	end
 
 	if not bios then

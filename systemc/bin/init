@@ -1,5 +1,17 @@
 
+if systemc ~= nil then
+	error("SystemC is already running!")
+end
+
+local tArgs = { ... }
+
 local sc_version = 1
+
+local target = "graphical" 
+
+if #tArgs >= 2 and tArgs[1] == "-target" then
+	target = tArgs[2]
+end
 
 local runningProgram = shell.getRunningProgram()
 local programName = fs.getName(runningProgram)
@@ -9,9 +21,13 @@ os.loadAPI(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "
 local a = _G.printError
 function _G.printError()
 	_G.printError=a
-	write("Starting version "..sc_version)
+	print("Starting version "..sc_version)
+	print()
 	parallel.waitForAny(
 		function()
+			while not systemc.loaded do
+				sleep()
+			end
 			if term.isColour() then
 				os.run( {}, "/rom/programs/advanced/multishell")
 			else
@@ -23,7 +39,7 @@ function _G.printError()
 			local runningProgram = shell.getRunningProgram()
 			local programName = fs.getName(runningProgram)
 
-			systemc.run(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "../"))
+			systemc.run(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "../"), target)
 		end )
 
 end
