@@ -1,0 +1,5 @@
+[Unit]
+Wants=graphical.target
+
+[Service]
+ExecStart=bin/texec rednet os.loadAPI("/rom/apis/rednet") rednet.run()

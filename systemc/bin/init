@@ -20,6 +20,7 @@ os.loadAPI(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "
 local a = _G.printError
 function _G.printError()
 	_G.printError=a
+	_G['rednet'] = nil
 	print("Starting version "..systemc.version())
 	print()
 	--[[parallel.waitForAny(

@@ -305,8 +305,8 @@ _shell.setCompletionFunction( "rom/programs/fun/advanced/paint", completeFile )
 _shell.setCompletionFunction( "rom/programs/http/pastebin", completePastebin )
 _shell.setCompletionFunction( "rom/programs/rednet/chat", completeChat )
 
-if term.isColour() then
-	os.run( {shell = _shell}, "/rom/programs/advanced/multishell")
-else
+--if term.isColour() then
+--	os.run( {shell = _shell}, "/rom/programs/advanced/multishell")
+--else
 	os.run( {shell = _shell}, "/rom/programs/shell")
-end
+--end

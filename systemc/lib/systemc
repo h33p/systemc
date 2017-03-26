@@ -1,4 +1,5 @@
-local _version = 2
+local _version = 3
+local start_service_delay = 0.1
 
 rootPath = "/systemc"
 
@@ -32,46 +33,16 @@ function get_processes ()
 	return pr
 end
 
-local function lock( t )
-    t.locked = true;
-    return setmetatable( {}, {
-        __index = t;
-        __newindex = function( t, k, v )
-            error( "access denied", 2 )
-        end;
-        __metatable = false;
-    })
-end
-
-
-local _rawset = _G.rawset
-rawset = function( t, k, v )
-    if t.locked then
-   error( "access denied", 2 )
-    end
-    return _rawset( t, k, v )
-end
-_G.rawset = rawset
-
-local _insert = _G.table.insert
-table.insert = function (t, v)
-	if t.locked then
-		error("access denied", 2)
-	end
-	return _insert(t,v)
-end
-_G.table.insert = table.insert
-
 local _run = os.run
 
 local _pcall = pcall
 
 local _load = load
 
-function load(x, mode, t, env)
-	return _load(x, mode, t, env)
-end
-_G.load = load
+--function load(x, mode, t, env)
+--	return _load(x, mode, t, env)
+--end
+--_G.load = load
 
 function os.run( _tEnv, _sPath, ... )
 	return _run(_tEnv, _sPath, ...)
@@ -300,6 +271,7 @@ function run_target (target)
 		write(" OK ")
 		term.setTextColor(normC)
 		print(" ] Reached Target", k)
+		sleep(start_service_delay)
 		if fs.isDir(fs.combine(unitDir, k)) then
 			local units = fs.list(fs.combine(unitDir, k))
 
@@ -315,7 +287,7 @@ function run_target (target)
 						term.setTextColor(badC)
 						write(" FAILED ")
 						term.setTextColor(normC)
-						print(" ] Failed to start", i, " Reason:", status)
+						print(" ] Failed to start", i, "Reason:", status)
 					else
 						term.setTextColor(normC)
 						write("[ ")
@@ -325,6 +297,7 @@ function run_target (target)
 						print(" ] Started", i)
 					end
 				end
+				sleep(start_service_delay)
 			end
 		end
 
@@ -483,7 +456,6 @@ local function _start_unit(name, foreground)
 				services[name2].status = "inactive (failed)"
 				return false, "unspecified"
 			else
-				lastid = lastid + 1
 				services[name2].pid = lastid
 				services[name2].status = "active (running)"
 				return true
@@ -501,7 +473,7 @@ local function _start_unit(name, foreground)
 end
 
 function start_unit(name)
-	_start_unit(name, false)
+	return _start_unit(name, false)
 end
 
 function stop_unit(name)

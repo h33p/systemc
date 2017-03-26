@@ -19,7 +19,7 @@ Icon
 .com.apple.timemachine.donotpresent
 
 #VIM swap files
-.swp
+*.swp
 
 # Directories potentially created on remote AFP share
 .AppleDB
