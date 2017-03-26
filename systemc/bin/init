@@ -5,8 +5,6 @@ end
 
 local tArgs = { ... }
 
-local sc_version = 1
-
 local target = "graphical" 
 
 if #tArgs >= 2 and tArgs[1] == "-target" then
@@ -16,33 +14,38 @@ end
 local runningProgram = shell.getRunningProgram()
 local programName = fs.getName(runningProgram)
 os.loadAPI(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "../lib/systemc"))
+
 --TLCO
 
 local a = _G.printError
 function _G.printError()
 	_G.printError=a
-	print("Starting version "..sc_version)
+	print("Starting version "..systemc.version())
 	print()
-	parallel.waitForAny(
+	--[[parallel.waitForAny(
 		function()
 			while not systemc.loaded do
 				sleep()
 			end
 			if term.isColour() then
-				os.run( {}, "/rom/programs/advanced/multishell")
+				os.run( {uid = 0}, "/rom/programs/advanced/multishell")
 			else
-				os.run( {}, "/rom/programs/shell")
+				os.run( {uid = 0}, "/rom/programs/shell")
 			end
-			os.run( {}, "/rom/programs/shutdown")
+			os.run( {uid = 0}, "/rom/programs/shutdown")
 		end,
-		function()
+		function()]]
 			local runningProgram = shell.getRunningProgram()
 			local programName = fs.getName(runningProgram)
 
 			systemc.run(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "../"), target)
-		end )
+		--end )
+	print("SystemC crash! Shutting down in 5 seconds!")
+	sleep (5)
+	os.shutdown ()
 
 end
 os.queueEvent("terminate")
 
 sleep (2)
+_G.ptable[1] = nil

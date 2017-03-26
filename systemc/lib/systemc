@@ -1,3 +1,5 @@
+local _version = 2
+
 rootPath = "/systemc"
 
 libDir = fs.combine(rootPath, "/lib")
@@ -5,9 +7,75 @@ binDir = fs.combine(rootPath, "/bin")
 etcDir = fs.combine(rootPath, "/etc")
 unitDir = fs.combine(etcDir, "/systemc/system")
 
+local threads = {}
+
 services = {}
 targets = {}
 loaded = false
+
+process = { uid = 0, pid = 1, parent = 0}
+local _process = { uid = 0, pid = 1, parent = 0}
+
+local lastid = 1
+
+local function copyTable(t)
+   local aux = textutils.serialize(t)
+   local t2 = textutils.unserialize(aux)
+   return t2
+end
+
+function get_processes ()
+	pr = {}
+	for k, v in pairs(threads) do
+		pr[v.pid] = v
+	end
+	return pr
+end
+
+local function lock( t )
+    t.locked = true;
+    return setmetatable( {}, {
+        __index = t;
+        __newindex = function( t, k, v )
+            error( "access denied", 2 )
+        end;
+        __metatable = false;
+    })
+end
+
+
+local _rawset = _G.rawset
+rawset = function( t, k, v )
+    if t.locked then
+   error( "access denied", 2 )
+    end
+    return _rawset( t, k, v )
+end
+_G.rawset = rawset
+
+local _insert = _G.table.insert
+table.insert = function (t, v)
+	if t.locked then
+		error("access denied", 2)
+	end
+	return _insert(t,v)
+end
+_G.table.insert = table.insert
+
+local _run = os.run
+
+local _pcall = pcall
+
+local _load = load
+
+function load(x, mode, t, env)
+	return _load(x, mode, t, env)
+end
+_G.load = load
+
+function os.run( _tEnv, _sPath, ... )
+	return _run(_tEnv, _sPath, ...)
+end
 
 local function tobool( val )
 	if val == nil or val == false or val == 0 or val == "0" or val == "false" then return false end
@@ -16,13 +84,13 @@ end
 
 local function get_virtual_term ()
 
-	vTerm = {}
-	output = {}
+	local vTerm = {}
+	local output = {}
 	vTerm.clear = function () end
-	color = colors.white
-	bcolor = colors.black
-	tx = 0
-	ty = 0
+	local color = colors.white
+	local bcolor = colors.black
+	local tx = 0
+	local ty = 0
 	vTerm.write = function (text) table.insert(output, text) end
 	vTerm.blit = function (text, a, b) table.insert(output, text) end
 	vTerm.getCursorPos = function () return tx, ty end
@@ -45,21 +113,21 @@ end
 
 local function get_unit_info (path)
 
-	description = ""
-	documentation = {}
-	after = {}
-	requires = {}
-	wants = {}
-	conflicts = {}
+	local description = ""
+	local documentation = {}
+	local after = {}
+	local requires = {}
+	local wants = {}
+	local conflicts = {}
 
 
-	h = fs.open(path, "r")
+	local h = fs.open(path, "r")
 	
-	cont = true
-	read = false
+	local cont = true
+	local read = false
 
 	while cont do
-		text = h.readLine()
+		local text = h.readLine()
 		if text == nil then
 			cont = false
 		elseif string.sub(text, 1, 1) == "[" then
@@ -69,7 +137,7 @@ local function get_unit_info (path)
 				read = false
 			end
 		elseif read then
-			arg, a = text:match("([^=]+)=([^=]+)")
+			local arg, a = text:match("([^=]+)=([^=]+)")
 			if arg == "Type" then
 				type = a
 			elseif arg == "Description" then
@@ -92,18 +160,18 @@ end
 
 local function get_install_info (path)
 
-	requiredby = {}
-	wantedby = {}
-	also = {}
+	local requiredby = {}
+	local wantedby = {}
+	local also = {}
 
 
-	h = fs.open(path, "r")
+	local h = fs.open(path, "r")
 	
-	cont = true
-	read = false
+	local cont = true
+	local read = false
 
 	while cont do
-		text = h.readLine()
+		local text = h.readLine()
 		if text == nil then
 			cont = false
 		elseif string.sub(text, 1, 1) == "[" then
@@ -113,7 +181,7 @@ local function get_install_info (path)
 				read = false
 			end
 		elseif read then
-			arg, a = text:match("([^=]+)=([^=]+)")
+			local arg, a = text:match("([^=]+)=([^=]+)")
 			if arg == "RequiredBy" then
 				for word in a:gmatch("%w+") do table.insert(requiredby, word) end	
 			elseif arg == "WantedBy" then
@@ -130,20 +198,20 @@ end
 	
 local function get_service_info (path)
 
-	stype = "simple"
-	execstart = ""
-	execstop = ""
-	execreload = ""
-	restart = false
-	remainafterexit = false
+	local stype = "simple"
+	local execstart = ""
+	local execstop = ""
+	local execreload = ""
+	local restart = false
+	local remainafterexit = false
 
-	h = fs.open(path, "r")
+	local h = fs.open(path, "r")
 	
-	cont = true
-	read = false
+	local cont = true
+	local read = false
 
 	while cont do
-		text = h.readLine()
+		local text = h.readLine()
 		if text == nil then
 			cont = false
 		elseif string.sub(text, 1, 1) == "[" then
@@ -153,7 +221,7 @@ local function get_service_info (path)
 				read = false
 			end
 		elseif read then
-			arg, a = text:match("([^=]+)=([^=]+)")
+			local arg, a = text:match("([^=]+)=([^=]+)")
 			if arg == "Type" then
 				stype = a
 			elseif arg == "ExecStart" then
@@ -176,15 +244,15 @@ end
 
 function load_targets()
 	
-	h = fs.open(fs.combine(fs.combine(etcDir, "systemc"), "targets.conf"), "r")
+	local h = fs.open(fs.combine(fs.combine(etcDir, "systemc"), "targets.conf"), "r")
 	
-	i = 0
+	local i = 0
 	while h ~= nil do
-		text = h.readLine()
+		local text = h.readLine()
 		if text == nil then
 			break
 		end
-		a, b = text:match("([^=]+)=([^=]+)")
+		local a, b = text:match("([^=]+)=([^=]+)")
 		targets[a] = {}
 		for p in string.gmatch(b, '([^,]+)') do
 			targets[a][p] = true
@@ -202,11 +270,11 @@ end
 
 function run_target (target)
 		
-	stext = term.getTextColor()
+	local stext = term.getTextColor()
 
-	normC = colors.white
-	okC = colors.lightGray
-	badC = colors.gray
+	local normC = colors.white
+	local okC = colors.lightGray
+	local badC = colors.gray
 
 	if term.isColor() then
 		okC = colors.green
@@ -233,13 +301,13 @@ function run_target (target)
 		term.setTextColor(normC)
 		print(" ] Reached Target", k)
 		if fs.isDir(fs.combine(unitDir, k)) then
-			units = fs.list(fs.combine(unitDir, k))
+			local units = fs.list(fs.combine(unitDir, k))
 
 			for p, o in pairs(units) do
-				i, u = o:match("([^.]+).([^.]+)")
+				local i, u = o:match("([^.]+).([^.]+)")
 				sleep()
 				if services[i].status:match("inactive") == "inactive" then
-					ok, status = start_unit(i)
+					local ok, status = start_unit(i)
 					services[i].enabled = "enabled"
 					if not ok then
 						term.setTextColor(normC)
@@ -267,7 +335,7 @@ end
 function reload_daemon (loud)
 	for k, w in pairs(fs.list(unitDir)) do
 		if not fs.isDir(fs.combine(unitDir, w)) then
-			name, utype = w:match("([^.]+).([^.]+)")
+			local name, utype = w:match("([^.]+).([^.]+)")
 
 			if utype == "service" and services[name] == nil then
 				services[name] = {}
@@ -288,12 +356,12 @@ function reload_daemon (loud)
 	end
 	for k, w in pairs(fs.list(unitDir)) do
 		if not fs.isDir(fs.combine(unitDir, w)) then
-			name, utype = w:match("([^.]+).([^.]+)")
+			local name, utype = w:match("([^.]+).([^.]+)")
 
 			if utype == "service" then
-				stype, execstart, execstop, execreload, restart, remainafterexit = get_service_info (fs.combine(unitDir, w))
-				requiredby, wantedby, also = get_install_info (fs.combine(unitDir, w)) 
-				description, documentation, after, requires, wants, conflicts = get_unit_info (fs.combine(unitDir, w))
+				local stype, execstart, execstop, execreload, restart, remainafterexit = get_service_info (fs.combine(unitDir, w))
+				local requiredby, wantedby, also = get_install_info (fs.combine(unitDir, w)) 
+				local description, documentation, after, requires, wants, conflicts = get_unit_info (fs.combine(unitDir, w))
 				if services[name] == nil then
 					services[name] = {}
 				end
@@ -325,7 +393,7 @@ function reload_daemon (loud)
 							services[t]["wantedby"][name] = true
 						else
 
-							c, d = t:match("([^.]+).([^.]+)")
+							local c, d = t:match("([^.]+).([^.]+)")
 							if loud and (t:match(".") ~= "." or (d == "target" and targets[c] == nil) or (d == "service" and services[c] == nil)) then
 								print(name.." Wants: Unit "..t.." not found!")
 							end
@@ -346,7 +414,7 @@ end
 function disable_unit(name)
 
 	if fs.exists(fs.combine(unitDir, name)) then
-		name2, utype = name:match("([^.]+).([^.]+)")
+		local name2, utype = name:match("([^.]+).([^.]+)")
 		
 		if utype == "service" then
 			services[name2].enabled = "disabled"
@@ -364,11 +432,11 @@ end
 function enable_unit(name)
 
 	if fs.exists(fs.combine(unitDir, name)) then
-		name2, utype = name:match("([^.]+).([^.]+)")
+		local name2, utype = name:match("([^.]+).([^.]+)")
 		
 		if utype == "service" then
 			for k, v in pairs(services[name2].wants) do
-				name3, wtype = k:match("([^.]+).([^.]+)")
+				local name3, wtype = k:match("([^.]+).([^.]+)")
 				if wtype == "target" then
 					if not fs.exists(fs.combine(unitDir, k)) then
 						fs.makeDir(fs.combine(unitDir, k))
@@ -387,30 +455,44 @@ function enable_unit(name)
 	end
 end
 
-function start_unit(name)
-	if fs.exists(fs.combine(unitDir, name)) then
-		name2, utype = name:match("([^.]+).([^.]+)")
+local function starts(String,Start)
+   return string.sub(String,1,string.len(Start))==Start
+end
 
-		a = services[name2].execstart:gmatch("%S+")
-		name3 = a()
-		args = {}
+local _fterm = {}
+
+local function _start_unit(name, foreground)
+	if fs.exists(fs.combine(unitDir, name)) then
+		local name2, utype = name:match("([^.]+).([^.]+)")
+
+		local a = services[name2].execstart:gmatch("%S+")
+		local name3 = a()
+		local args = {}
+		if starts(name3, "/") == false then name3 = fs.combine(rootPath, name3) end
 		for w in a do table.insert(args, w) end
 		if utype == "service" and services[name2].thread == nil then
+			local tTerm = {}
 			services[name2].output, tTerm = get_virtual_term ()
-			ok, thread = coroutine.start(function () os.run( {term = tTerm, print = tTerm.write}, name3, args) end)
+			local ok = false
+			if foreground then
+				ok, services[name2].thread = coroutine.start(function () os.run( {term = _fterm}, name3, unpack(args)) end)
+			else
+				ok, services[name2].thread = coroutine.start(function () os.run( {uid = 0, term = tTerm, print = tTerm.write}, name3, unpack(args)) end)
+			end
 			if not ok then
 				services[name2].status = "inactive (failed)"
 				return false, "unspecified"
 			else
+				lastid = lastid + 1
+				services[name2].pid = lastid
 				services[name2].status = "active (running)"
-				services[name2].thread = thread
 				return true
 			end
 		else
 			return false, name.." already running!"
 		end
 	elseif fs.exists(fs.combine(unitDir, name..".service")) and services[name].thread == nil then
-		return start_unit(name..".service")
+		return _start_unit(name..".service", foreground)
 	else
 		return false, name..".service already running!"
 	end
@@ -418,9 +500,13 @@ function start_unit(name)
 	return false, "unhandled"
 end
 
+function start_unit(name)
+	_start_unit(name, false)
+end
+
 function stop_unit(name)
 	if fs.exists(fs.combine(unitDir, name)) then
-		name2, utype = name:match("([^.]+).([^.]+)")
+		local name2, utype = name:match("([^.]+).([^.]+)")
 		if utype == "service" and services[name2].thread ~= nil then
 			services[name2].status = "inactive (stopped)"
 			services[name2].thread = nil
@@ -434,15 +520,87 @@ function stop_unit(name)
 	end
 end
 
+local _create = coroutine.create
+function coroutine.create (func, ...)
+	lastid = lastid + 1
+	local thread = _create(func, ...)
+	threads[thread] = {}
+	threads[thread].pid = lastid
+	threads[thread].uid = _process.uid
+	threads[thread].parent = _process.pid
+	return thread
+end
+_G.coroutine.create = coroutine.create
+
+local _resume = coroutine.resume
+function coroutine.resume (cor, ...)
+
+	if threads[cor] == nil then
+		return _resume(cor, ...)
+	end
+
+	local pr = process
+	local _pr = _process
+
+	process = {}
+	_process = {}
+
+	process.pid = threads[cor].pid
+	_process.pid = process.pid
+	process.uid = threads[cor].uid
+	_process.uid = process.uid
+	process.parent = threads[cor].parent
+	_process.parent = process.parent
+
+	local ret = {_resume(cor, ...)}
+	
+	process = pr
+	_process = _pr
+	return unpack(ret)
+
+end
+_G.coroutine.resume = coroutine.resume
+
 function coroutine.start(func, ...)
   if type(func) ~= "function" then return false end
   local cr = coroutine.create(func)
 	return true, cr
 end
 
+local function getty()
+	local stext = term.getTextColor()
+
+	local normC = colors.white
+	local okC = colors.lightGray
+	local badC = colors.gray
+
+	if term.isColor() then
+		okC = colors.green
+		badC = colors.red
+	end
+
+	for k, v in pairs(services) do
+		if starts(k, "getty") then
+			--[[term.setTextColor(normC)
+			write("[ ")
+			term.setTextColor(okC)
+			write(" OK ")]]
+			term.setTextColor(normC)
+			print("Running", k)
+			_start_unit(k, true)
+		end
+	end
+end
+
+function version ()
+	return _version
+end
+
 function run(root, target)
 
 	_G.systemc = _ENV
+	
+	_fterm = term
 
 	rootPath = tostring(root)
 	
@@ -455,14 +613,16 @@ function run(root, target)
 	reload_daemon (false)
 	run_target (target)
 
+	getty()
+
 	loaded = true
 
 	while true do
-	  local eventData = {coroutine.yield()}
-  	for key, val in pairs(services) do
+		local eventData = {coroutine.yield()}
+		for key, val in pairs(services) do
 			if val.thread ~= nil then
-    		coroutine.resume(val.thread, unpack(eventData))
-  			if coroutine.status(val.thread) == "dead" then
+				coroutine.resume(val.thread, unpack(eventData))
+				if val.thread == nil or coroutine.status(val.thread) == "dead" then
 					val.status = "inactive (finished)"
 					val.thread = nil
 				end
@@ -470,6 +630,11 @@ function run(root, target)
 				val.status = "inactive (killed)"
 			end
 		end
+		--[[for k, v in pairs(threads) do
+			if coroutine.status(k) == "dead" then
+				threads[k] = nil
+			end
+		end]]
 	end
 
 end
