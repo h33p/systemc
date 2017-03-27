@@ -1,4 +1,4 @@
-local _version = 3
+local _version = 4
 local start_service_delay = 0.1
 
 rootPath = "/systemc"
@@ -9,6 +9,8 @@ etcDir = fs.combine(rootPath, "/etc")
 unitDir = fs.combine(etcDir, "/systemc/system")
 
 local threads = {}
+
+local _curthread = nil
 
 services = {}
 targets = {}
@@ -25,6 +27,14 @@ local function copyTable(t)
    return t2
 end
 
+function getProcessSecure ()
+	return copyTable(_process)
+end
+
+function getGid(num)
+	return 1
+end
+
 function get_processes ()
 	pr = {}
 	for k, v in pairs(threads) do
@@ -33,7 +43,6 @@ function get_processes ()
 	return pr
 end
 
-local _run = os.run
 
 local _pcall = pcall
 
@@ -44,8 +53,24 @@ local _load = load
 --end
 --_G.load = load
 
+local _run = os.run
+
 function os.run( _tEnv, _sPath, ... )
-	return _run(_tEnv, _sPath, ...)
+	local _suid = _process.suid
+	if fs.getPerms ~= nil and fs.getPerms(_sPath).psuid then
+		threads[_curthread].suid = true
+		process.suid = true
+		_process.suid = true
+	else
+		threads[_curthread].suid = false
+		process.suid = false
+		_process.suid = false
+	end
+	local ret = _run(_tEnv, _sPath, ...)
+	threads[_curthread].suid = _suid
+	process.suid = _suid
+	_process.suid = _suid
+	return ret
 end
 
 local function tobool( val )
@@ -259,7 +284,7 @@ function run_target (target)
 		write(" FAILED ")
 		term.setTextColor(normC)
 		print(" ] Target", target, "was not found!")
-		sleep (1)
+		sleep ()
 		return
 	end
 	
@@ -301,7 +326,6 @@ function run_target (target)
 			end
 		end
 
-		sleep()
 	end
 end
 
@@ -499,6 +523,7 @@ function coroutine.create (func, ...)
 	threads[thread] = {}
 	threads[thread].pid = lastid
 	threads[thread].uid = _process.uid
+	threads[thread].suid = false
 	threads[thread].parent = _process.pid
 	return thread
 end
@@ -508,26 +533,34 @@ local _resume = coroutine.resume
 function coroutine.resume (cor, ...)
 
 	if threads[cor] == nil then
+		if _curthread == nil then
+			_curthread = cor
+		end
 		return _resume(cor, ...)
 	end
 
 	local pr = process
 	local _pr = _process
+	local _ot = _curthread
 
 	process = {}
 	_process = {}
 
 	process.pid = threads[cor].pid
 	_process.pid = process.pid
+	process.suid = threads[cor].suid
+	_process.suid = process.suid
 	process.uid = threads[cor].uid
 	_process.uid = process.uid
 	process.parent = threads[cor].parent
 	_process.parent = process.parent
+	_curthread = cor
 
 	local ret = {_resume(cor, ...)}
 	
 	process = pr
 	_process = _pr
+	_curthread = _ot
 	return unpack(ret)
 
 end
@@ -568,6 +601,30 @@ function version ()
 	return _version
 end
 
+function setuid (newuid)
+	if tonumber(newuid) == nil then error ("Number Expected") end
+	newuid = tonumber(newuid)
+	if threads[_curthread] ~= nil and threads[_curthread].suid then
+		process.uid = newuid
+		_process.uid = newuid
+		threads[_curthread].uid = newuid
+	else
+		error("Access Denied")
+	end
+
+end
+
+local ofs = fs
+
+local function loadLibs ()
+	files = ofs.list(libDir)
+	for k, v in pairs(files) do
+		if not ofs.isDir (ofs.combine(libDir, v)) and string.sub(v, 1,1) ~= "." and v ~= "systemc" then
+			os.loadAPI(ofs.combine(libDir, v))
+		end
+	end
+end
+
 function run(root, target)
 
 	_G.systemc = _ENV
@@ -581,6 +638,7 @@ function run(root, target)
 	etcDir = fs.combine(rootPath, "/etc")
 	unitDir = fs.combine(etcDir, "/systemc/system")
 
+	loadLibs()
 	load_targets ()
 	reload_daemon (false)
 	run_target (target)

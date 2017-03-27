@@ -48,5 +48,4 @@ function _G.printError()
 end
 os.queueEvent("terminate")
 
-sleep (2)
-_G.ptable[1] = nil
+sleep(1)
