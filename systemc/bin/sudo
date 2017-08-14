@@ -3,7 +3,7 @@ local tArgs = {...}
 print("Sudo. Currently no authentication is present. All users can run.")
 
 local target_uid = tArgs[1]
-local old_uid = systemc.process.uid
+--local old_uid = systemc.process.uid
 local pArgs = {}
 
 local i = 2
@@ -19,5 +19,3 @@ if not ok then
 end
 
 shell.run(unpack(pArgs))
-
-systemc.setuid(old_uid)

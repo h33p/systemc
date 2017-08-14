@@ -1,10 +1,10 @@
 
-local nativesetfenv = setfenv
 local nativegetfenv = getfenv
 if _VERSION == "Lua 5.1" then
     -- Install parts of the Lua 5.2 API so that programs can be written against it now
     local nativeload = load
     local nativeloadstring = loadstring
+		local nativesetfenv = setfenv
     function load( x, name, mode, env )
         if mode ~= nil and mode ~= "t" then
             error( "Binary chunk loading prohibited", 2 )
@@ -43,8 +43,8 @@ if _VERSION == "Lua 5.1" then
     table.unpack = unpack
     table.pack = function( ... ) return { ... } end
 
+		-- Install the bit32 api
     local nativebit = bit
-		local nativebit = bit
 		bit32 = {}
 		bit32.arshift = nativebit.brshift
 		bit32.band = nativebit.band
@@ -66,6 +66,70 @@ if _VERSION == "Lua 5.1" then
         table.maxn = nil
         bit = nil
     end
+end
+
+if _VERSION == "Lua 5.3" then
+    -- If we're on Lua 5.3, install the bit32 api from Lua 5.2
+    -- (Loaded from a string so this file will still parse on <5.3 lua)
+    load( [[
+        bit32 = {}
+
+        function bit32.arshift( n, bits )
+            if type(n) ~= "number" or type(bits) ~= "number" then
+                error( "Expected number, number", 2 )
+            end
+            return n >> bits
+        end
+
+        function bit32.band( m, n )
+            if type(m) ~= "number" or type(n) ~= "number" then
+                error( "Expected number, number", 2 )
+            end
+            return m & n
+        end
+
+        function bit32.bnot( n )
+            if type(n) ~= "number" then
+                error( "Expected number", 2 )
+            end
+            return ~n
+        end
+
+        function bit32.bor( m, n )
+            if type(m) ~= "number" or type(n) ~= "number" then
+                error( "Expected number, number", 2 )
+            end
+            return m | n
+        end
+
+        function bit32.btest( m, n )
+            if type(m) ~= "number" or type(n) ~= "number" then
+                error( "Expected number, number", 2 )
+            end
+            return (m & n) ~= 0
+        end
+
+        function bit32.bxor( m, n )
+            if type(m) ~= "number" or type(n) ~= "number" then
+                error( "Expected number, number", 2 )
+            end
+            return m ~ n
+        end
+
+        function bit32.lshift( n, bits )
+            if type(n) ~= "number" or type(bits) ~= "number" then
+                error( "Expected number, number", 2 )
+            end
+            return n << bits
+        end
+
+        function bit32.rshift( n, bits )
+            if type(n) ~= "number" or type(bits) ~= "number" then
+                error( "Expected number, number", 2 )
+            end
+            return n >> bits
+        end
+    ]] )()
 end
 
 -- Install fix for luaj's broken string.sub/string.find
@@ -128,7 +192,7 @@ function os.pullEventRaw( sFilter )
 end
 
 function os.pullEvent( sFilter )
-    local eventData = { os.pullEventRaw( sFilter ) }
+    local eventData = table.pack( os.pullEventRaw( sFilter ) )
     if eventData[1] == "terminate" then
         error( "Terminated", 0 )
     end
@@ -137,6 +201,9 @@ end
 
 -- Install globals
 function sleep( nTime )
+		if nTime ~= nil and type( nTime ) ~= "number" then
+        error( "bad argument #1 (expected number, got " .. type( nTime ) .. ")", 2 ) 
+    end
     local timer = os.startTimer( nTime or 0 )
     repeat
         local sEvent, param = os.pullEvent( "timer" )
@@ -144,6 +211,10 @@ function sleep( nTime )
 end
 
 function write( sText )
+		if sText ~= nil and type( sText ) ~= "string" and type( sText ) ~= "number" then
+			error( "bad argument #1 (expected string, got " .. type( sText ) .. ")", 2 ) 
+		end
+
     local w,h = term.getSize()        
     local x,y = term.getCursorPos()
     
@@ -205,15 +276,22 @@ end
 
 function print( ... )
     local nLinesPrinted = 0
-    for n,v in ipairs( { ... } ) do
-        nLinesPrinted = nLinesPrinted + write( tostring( v ) )
+		local nLimit = select("#", ... )
+    for n = 1, nLimit do
+        local s = tostring( select( n, ... ) )
+        if n < nLimit then
+            s = s .. "\t"
+        end
+        nLinesPrinted = nLinesPrinted + write( s )
     end
     nLinesPrinted = nLinesPrinted + write( "\n" )
     return nLinesPrinted
 end
 
 function printError( ... )
+		local oldColour
     if term.isColour() then
+				oldColour = term.getTextColour()
         term.setTextColour( colors.red )
     end
     print( ... )
@@ -223,6 +301,15 @@ function printError( ... )
 end
 
 function read( _sReplaceChar, _tHistory, _fnComplete )
+		if _sReplaceChar ~= nil and type( _sReplaceChar ) ~= "string" then
+        error( "bad argument #1 (expected string, got " .. type( _sReplaceChar ) .. ")", 2 ) 
+    end
+    if _tHistory ~= nil and type( _tHistory ) ~= "table" then
+        error( "bad argument #2 (expected table, got " .. type( _tHistory ) .. ")", 2 ) 
+    end
+    if _fnComplete ~= nil and type( _fnComplete ) ~= "function" then
+        error( "bad argument #3 (expected function, got " .. type( _fnComplete ) .. ")", 2 ) 
+    end
     term.setCursorBlink( true )
 
     local sLine = ""
@@ -491,6 +578,12 @@ function read( _sReplaceChar, _tHistory, _fnComplete )
 end
 
 loadfile = function( _sFile, _tEnv )
+		if type( _sFile ) ~= "string" then
+        error( "bad argument #1 (expected string, got " .. type( _sFile ) .. ")", 2 ) 
+    end
+    if _tEnv ~= nil and type( _tEnv ) ~= "table" then
+        error( "bad argument #2 (expected table, got " .. type( _tEnv ) .. ")", 2 ) 
+    end
     local file = fs.open( _sFile, "r" )
     if file then
         local func, err = load( file.readAll(), fs.getName( _sFile ), "t", _tEnv )
@@ -514,7 +607,13 @@ end
 
 -- Install the rest of the OS api
 function os.run( _tEnv, _sPath, ... )
-    local tArgs = { ... }
+		if type( _tEnv ) ~= "table" then
+        error( "bad argument #1 (expected table, got " .. type( _tEnv ) .. ")", 2 ) 
+    end
+    if type( _sPath ) ~= "string" then
+        error( "bad argument #2 (expected string, got " .. type( _sPath ) .. ")", 2 ) 
+    end
+    local tArgs = table.pack( ... )
     local tEnv = _tEnv
     setmetatable( tEnv, { __index = _G } )
     local fnFile, err = loadfile( _sPath, tEnv )
@@ -549,8 +648,13 @@ end
 
 local tAPIsLoading = {}
 function os.loadAPI( _sPath )
-		--print("Loading: ".._sPath)
+		if type( _sPath ) ~= "string" then
+        error( "bad argument #1 (expected string, got " .. type( _sPath ) .. ")", 2 ) 
+    end
     local sName = fs.getName( _sPath )
+		if sName:sub(-4) == ".lua" then
+        sName = sName:sub(1,-5)
+    end
     if tAPIsLoading[sName] == true then
         printError( "API "..sName.." is already being loaded" )
         return false
@@ -586,6 +690,7 @@ function os.loadAPI( _sPath )
         tAPIsLoading[sName] = nil
         return false
     end
+
     local tAPI = {}
     for k,v in pairs( tEnv ) do
         if k ~= "_ENV" then
@@ -601,6 +706,9 @@ function os.loadAPI( _sPath )
 end
 
 function os.unloadAPI( _sName )
+		if type( _sName ) ~= "string" then
+        error( "bad argument #1 (expected string, got " .. type( _sName ) .. ")", 2 ) 
+    end
     if _sName ~= "_G" and type(_G[_sName]) == "table" then
         _G[_sName] = nil
     end
@@ -630,41 +738,89 @@ end
 if http then
     local nativeHTTPRequest = http.request
 
-    local function wrapRequest( _url, _post, _headers )
-        local ok, err = nativeHTTPRequest( _url, _post, _headers )
+    local function wrapRequest( _url, _post, _headers, _binary )
+        local ok, err = nativeHTTPRequest( _url, _post, _headers, _binary )
         if ok then
             while true do
-                local event, param1, param2 = os.pullEvent()
+                local event, param1, param2, param3 = os.pullEvent()
                 if event == "http_success" and param1 == _url then
                     return param2
                 elseif event == "http_failure" and param1 == _url then
-                    return nil, param2
+                    return nil, param2, param3
                 end
             end
         end
         return nil, err
     end
     
-    http.get = function( _url, _headers )
-        return wrapRequest( _url, nil, _headers )
+    http.get = function( _url, _headers, _binary )
+				if type( _url ) ~= "string" then
+            error( "bad argument #1 (expected string, got " .. type( _url ) .. ")", 2 ) 
+        end
+        if _headers ~= nil and type( _headers ) ~= "table" then
+            error( "bad argument #2 (expected table, got " .. type( _headers ) .. ")", 2 ) 
+        end
+        return wrapRequest( _url, nil, _headers, _binary)
     end
 
-    http.post = function( _url, _post, _headers )
-        return wrapRequest( _url, _post or "", _headers )
+    http.post = function( _url, _post, _headers, _binary)
+				if type( _url ) ~= "string" then
+            error( "bad argument #1 (expected string, got " .. type( _url ) .. ")", 2 ) 
+        end
+        if type( _post ) ~= "string" then
+            error( "bad argument #2 (expected string, got " .. type( _post ) .. ")", 2 ) 
+        end
+        if _headers ~= nil and type( _headers ) ~= "table" then
+            error( "bad argument #3 (expected table, got " .. type( _headers ) .. ")", 2 ) 
+        end
+        return wrapRequest( _url, _post or "", _headers, _binary)
     end
 
-    http.request = function( _url, _post, _headers )
-        local ok, err = nativeHTTPRequest( _url, _post, _headers )
+    http.request = function( _url, _post, _headers, _binary )
+				 if type( _url ) ~= "string" then
+            error( "bad argument #1 (expected string, got " .. type( _url ) .. ")", 2 ) 
+        end
+        if _post ~= nil and type( _post ) ~= "string" then
+            error( "bad argument #2 (expected string, got " .. type( _post ) .. ")", 2 ) 
+        end
+        if _headers ~= nil and type( _headers ) ~= "table" then
+            error( "bad argument #3 (expected table, got " .. type( _headers ) .. ")", 2 ) 
+        end
+        local ok, err = nativeHTTPRequest( _url, _post, _headers, _binary )
         if not ok then
             os.queueEvent( "http_failure", _url, err )
         end
         return ok, err
+    end
+
+		local nativeCheckURL = http.checkURL
+    http.checkURLAsync = nativeCheckURL
+    http.checkURL = function( _url )
+        local ok, err = nativeCheckURL( _url )
+        if not ok then return ok, err end
+    
+        while true do
+            local event, url, ok, err = os.pullEvent( "http_check" )
+            if url == _url then return ok, err end
+        end
     end
 end
 
 -- Install the lua part of the FS api
 local tEmpty = {}
 function fs.complete( sPath, sLocation, bIncludeFiles, bIncludeDirs )
+		if type( sPath ) ~= "string" then
+        error( "bad argument #1 (expected string, got " .. type( sPath ) .. ")", 2 ) 
+    end
+    if type( sLocation ) ~= "string" then
+        error( "bad argument #2 (expected string, got " .. type( sLocation ) .. ")", 2 ) 
+    end
+    if bIncludeFiles ~= nil and type( bIncludeFiles ) ~= "boolean" then
+        error( "bad argument #3 (expected boolean, got " .. type( bIncludeFiles ) .. ")", 2 ) 
+    end
+    if bIncludeDirs ~= nil and type( bIncludeDirs ) ~= "boolean" then
+        error( "bad argument #4 (expected boolean, got " .. type( bIncludeDirs ) .. ")", 2 ) 
+    end
     bIncludeFiles = (bIncludeFiles ~= false)
     bIncludeDirs = (bIncludeDirs ~= false)
     local sDir = sLocation
@@ -742,7 +898,7 @@ for n,sFile in ipairs( tApis ) do
     end
 end
 
-if turtle then
+if turtle and fs.isDir( "rom/apis/turtle" ) then
     -- Load turtle APIs
     local tApis = fs.list( "rom/apis/turtle" )
     for n,sFile in ipairs( tApis ) do
@@ -806,6 +962,48 @@ if bAPIError then
     os.pullEvent( "key" )
     term.clear()
     term.setCursorPos( 1,1 )
+end
+
+-- Set default settings
+settings.set( "shell.allow_startup", true )
+settings.set( "shell.allow_disk_startup", (commands == nil) )
+settings.set( "shell.autocomplete", true )
+settings.set( "edit.autocomplete", true ) 
+settings.set( "edit.default_extension", "lua" )
+settings.set( "paint.default_extension", "nfp" )
+settings.set( "lua.autocomplete", true )
+settings.set( "list.show_hidden", false )
+if term.isColour() then
+    settings.set( "bios.use_multishell", true )
+end
+if _CC_DEFAULT_SETTINGS then
+    for sPair in string.gmatch( _CC_DEFAULT_SETTINGS, "[^,]+" ) do
+        local sName, sValue = string.match( sPair, "([^=]*)=(.*)" )
+        if sName and sValue then
+            local value
+            if sValue == "true" then
+                value = true
+            elseif sValue == "false" then
+                value = false
+            elseif sValue == "nil" then
+                value = nil
+            elseif tonumber(sValue) then
+                value = tonumber(sValue)
+            else
+                value = sValue
+            end
+            if value ~= nil then
+                settings.set( sName, value )
+            else
+                settings.unset( sName )
+            end
+        end
+    end
+end
+
+-- Load user settings
+if fs.exists( ".settings" ) then
+    settings.load( ".settings" )
 end
 
 -- Run the shell

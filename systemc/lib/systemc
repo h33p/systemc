@@ -1,4 +1,4 @@
-local _version = 4
+local _version = 5
 local start_service_delay = 0.1
 
 rootPath = "/systemc"
@@ -8,6 +8,7 @@ binDir = fs.combine(rootPath, "/bin")
 etcDir = fs.combine(rootPath, "/etc")
 unitDir = fs.combine(etcDir, "/systemc/system")
 
+local deadThreads = {}
 local threads = {}
 
 local _curthread = nil
@@ -16,8 +17,8 @@ services = {}
 targets = {}
 loaded = false
 
-process = { uid = 0, pid = 1, parent = 0}
-local _process = { uid = 0, pid = 1, parent = 0}
+process = { uid = 0, pid = 1, parent = 0, exec = "" }
+local _process = { uid = 0, pid = 1, parent = 0, exec = "" }
 
 local lastid = 1
 
@@ -56,20 +57,28 @@ local _load = load
 local _run = os.run
 
 function os.run( _tEnv, _sPath, ... )
-	local _suid = _process.suid
-	if fs.getPerms ~= nil and fs.getPerms(_sPath).psuid then
-		threads[_curthread].suid = true
-		process.suid = true
-		_process.suid = true
-	else
-		threads[_curthread].suid = false
-		process.suid = false
-		_process.suid = false
+	local _uid = _process.uid
+	local _exec = _process.exec
+	if fs.isExecuteable ~= nil and not fs.isExecuteable(_sPath) then
+		print(_sPath..": Access Denied")
+		return false
 	end
+	if fs.getPerms ~= nil and fs.getPerms(_sPath).psuid then
+		threads[_curthread].uid = fs.getPerms(_sPath).owner
+		process.uid = threads[_curthread].uid
+		_process.uid = threads[_curthread].uid
+	end
+	_process.exec = _sPath
+	process.exec = _sPath
+	threads[_curthread].exec = _sPath
+	--print (process.uid.." "..process.exec)
 	local ret = _run(_tEnv, _sPath, ...)
-	threads[_curthread].suid = _suid
-	process.suid = _suid
-	_process.suid = _suid
+	threads[_curthread].uid = _uid
+	process.uid = _uid
+	_process.uid = _uid
+	_process.exec = _exec
+	process.exec = _exec
+	threads[_curthread].exec = _exec
 	return ret
 end
 
@@ -516,6 +525,63 @@ function stop_unit(name)
 	end
 end
 
+function _kill(thread, sig)
+	if threads[thread] == nil then
+		return
+	end
+	if threads[thread].events == nil then
+		threads[thread].events = {}
+	end
+	local event = ""
+	local queueChildren = false
+	if sig == 1 then --SIGHUP
+		queueChildren = true
+		event = "SIGHUP"
+	elseif sig == 2 then --SIGINT
+		event = "SIGINT"
+	elseif sig == 9 then --SIGKILL
+		queueChildren = true
+		event = "SIGKILL"
+	elseif sig == 15 then --SIGTERM
+		event = "terminate"
+	elseif sig == 17 then --SIGCHLD
+		event = "SIGCHLD"
+	end
+	
+	if queueChildren and threads[thread].children ~= nil then
+		for k, v in threads[thread].children do
+			_kill(k, sig)
+		end
+	end
+
+	table.insert(threads[thread].events, event)
+	if event == "SIGKILL" then
+		threads[thread] = nil
+		deadThreads[thread] = true
+	end
+
+	return true
+end
+
+function kill(pid, sig)
+	for k, v in pairs(threads) do
+		if v.pid == pid and threads[k].uid == _process.uid then
+			return _kill(k, sig)
+		end
+	end
+	return false, "Operation not permitted"
+end
+
+local _status = coroutine.status
+function coroutine.status (cor)
+	if deadThreads[cor] ~= nil then
+		return "dead"
+	else
+		return _status(cor)
+	end
+end
+_G.coroutine.status = coroutine.status
+
 local _create = coroutine.create
 function coroutine.create (func, ...)
 	lastid = lastid + 1
@@ -523,8 +589,8 @@ function coroutine.create (func, ...)
 	threads[thread] = {}
 	threads[thread].pid = lastid
 	threads[thread].uid = _process.uid
-	threads[thread].suid = false
 	threads[thread].parent = _process.pid
+	threads[thread].exec = "unknown"
 	return thread
 end
 _G.coroutine.create = coroutine.create
@@ -532,11 +598,21 @@ _G.coroutine.create = coroutine.create
 local _resume = coroutine.resume
 function coroutine.resume (cor, ...)
 
+	if coroutine.status(cor) == "dead" then
+		return false, "cannot resume dead coroutine"
+	end
+
 	if threads[cor] == nil then
 		if _curthread == nil then
 			_curthread = cor
 		end
 		return _resume(cor, ...)
+	elseif threads[cor].pid == -1 then
+		return 0, false
+	end
+
+	if threads[_curthread] ~= nil and threads[_curthread].pid ~= threads[cor].parent and threads[cor].parent > 1 then
+	--	error(-1)
 	end
 
 	local pr = process
@@ -548,15 +624,27 @@ function coroutine.resume (cor, ...)
 
 	process.pid = threads[cor].pid
 	_process.pid = process.pid
-	process.suid = threads[cor].suid
-	_process.suid = process.suid
 	process.uid = threads[cor].uid
 	_process.uid = process.uid
 	process.parent = threads[cor].parent
 	_process.parent = process.parent
+	process.exec = threads[cor].exec
+	_process.exec = process.exec
 	_curthread = cor
 
+	if threads[cor].events ~= nil then
+		for k, v in pairs(threads[cor].events) do
+			--print(v)
+			os.queueEvent(v)
+		end
+	end
+	threads[cor].events = {}
+
 	local ret = {_resume(cor, ...)}
+	--for k, v in pairs(ret) do
+	--	print (tostring(k))
+	--	print (tostring(v))
+	--end
 	
 	process = pr
 	_process = _pr
@@ -602,9 +690,10 @@ function version ()
 end
 
 function setuid (newuid)
+	print(threads[_curthread].uid.." "..newuid)
 	if tonumber(newuid) == nil then error ("Number Expected") end
 	newuid = tonumber(newuid)
-	if threads[_curthread] ~= nil and threads[_curthread].suid then
+	if threads[_curthread] ~= nil and threads[_curthread].uid == 0 then
 		process.uid = newuid
 		_process.uid = newuid
 		threads[_curthread].uid = newuid
@@ -628,6 +717,9 @@ end
 function run(root, target)
 
 	_G.systemc = _ENV
+	--for k, v in pairs(_G.systemc) do
+	--	_G.systemc[k] = _ENV[k]
+	--end
 	
 	_fterm = term
 
@@ -639,6 +731,7 @@ function run(root, target)
 	unitDir = fs.combine(etcDir, "/systemc/system")
 
 	loadLibs()
+	term.setCursorBlink(true)
 	load_targets ()
 	reload_daemon (false)
 	run_target (target)

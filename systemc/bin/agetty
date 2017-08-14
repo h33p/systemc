@@ -60,8 +60,8 @@ sPath = sPath..":/"..systemc.binDir
 _shell.path = function () return sPath end
 
 -- Setup aliases
-_shell.setAlias( "ls", "list" )
-_shell.setAlias( "dir", "list" )
+_shell.setAlias( "list", "ls" )
+_shell.setAlias( "dir", "ls" )
 _shell.setAlias( "cp", "copy" )
 _shell.setAlias( "mv", "move" )
 _shell.setAlias( "rm", "delete" )
@@ -305,8 +305,8 @@ _shell.setCompletionFunction( "rom/programs/fun/advanced/paint", completeFile )
 _shell.setCompletionFunction( "rom/programs/http/pastebin", completePastebin )
 _shell.setCompletionFunction( "rom/programs/rednet/chat", completeChat )
 
---if term.isColour() then
---	os.run( {shell = _shell}, "/rom/programs/advanced/multishell")
---else
+if term.isColour() then
+	os.run( {shell = _shell}, "/rom/programs/advanced/multishell")
+else
 	os.run( {shell = _shell}, "/rom/programs/shell")
---end
+end

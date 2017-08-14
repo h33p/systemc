@@ -26,6 +26,7 @@ local boot = false
 local noROM = false
 local noSC = false
 local targetPath = "/../"
+local clean = false
 for i, v in ipairs(tArgs) do
 	if tArgs[i] == "-D" then
 		targetPath = shell.resolve(tArgs[i+1])
@@ -149,7 +150,7 @@ local reboot = true
 local copied = {"getmetatable","unpack","__inext","_VERSION","redstone","ipairs","term",
                 "coroutine","pcall","math","assert","tonumber","rawequal","write","table",
                 "pairs","collectgarbage","xpcall","error","rawget","type","rs","rawset",
-                "string","setmetatable","select", "tostring","next","disk", "bit"}
+                "string","setmetatable","select", "settings", "tostring","next","disk", "bit"}
 --Not copied: reboot, shutdown
 local osCopied = {"getComputerLabel","setComputerLabel","day","queueEvent","getComputerID","time","clock","computerID","startTimer","cancelTimer","setAlarm","cancelAlarm"}
 local function sandboxFunction(func)
@@ -167,6 +168,7 @@ local function sandboxFunction(func)
 	end
 	new_os.shutdown = function(...)	
 		terminate = true
+		error(1)
 		while true do
 			coroutine.yield()
 		end
@@ -197,6 +199,7 @@ local function sandboxFunction(func)
 	end
 	new_fs.open = fsWrap("open",fs.open,1)
 	new_fs.combine = fs.combine
+	new_fs.complete = fsWrap("complete", fs.complete, nil)
 	new_fs.list = fsWrap("list",function(f,...)
 		if f == targetPath then
 			local has = {}
@@ -218,6 +221,14 @@ local function sandboxFunction(func)
 		else
 			return fs.list(f)
 		end
+	end,nil)
+	new_fs.find = fsWrap("find",function(inp)
+		local output = fs.find(inp)
+		for k,v in pairs(output) do
+			v = fs.combine("", v)
+			output[k] = fs.combine("",string.sub(v, #fs.combine("", targetPath) + 2, #v))
+		end
+		return output
 	end,nil)
 	table.fs = new_fs
 

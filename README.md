@@ -1,4 +1,4 @@
-# SystemC - SystemD for CraftOS 1.7
+# SystemC - SystemD for CraftOS 1.7+ And Much More
 
 ### Programs
 
@@ -8,15 +8,21 @@ systemctl - SystemC unit control interface
 
 systemc-nspawn - SystemC container script
 
+bunch of other binaries very similar to Unix ones.
+
 ### Features
 
-Ability to start/stop services (defined in <SystemC Root>/etc/systemc/system)
+Fully featured service manager able to start/stop services (defined in <SystemC Root>/etc/systemc/system)
 
 Ability to enable them to be run on boot
 
 Different targets. Currently only chosen on boot
 
 Ability to create sandboxed environment
+
+File permissions
+
+Additional functionality like signals
 
 ### Other information
 
