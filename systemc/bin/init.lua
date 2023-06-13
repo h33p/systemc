@@ -13,7 +13,7 @@ end
 
 local runningProgram = shell.getRunningProgram()
 local programName = fs.getName(runningProgram)
-os.loadAPI(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "../lib/systemc"))
+os.loadAPI(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "../lib/systemc.lua"))
 
 --TLCO
 
@@ -41,8 +41,8 @@ function _G.printError()
 
 			systemc.run(fs.combine(runningProgram:sub( 1, #runningProgram - #programName ), "../"), target)
 		--end )
-	print("SystemC crash! Shutting down in 5 seconds!")
-	sleep (5)
+	print("SystemC halted! Shutting down!")
+	sleep (1)
 	os.shutdown ()
 
 end

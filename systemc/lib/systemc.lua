@@ -1,4 +1,4 @@
-local _version = 5
+local _version = 6
 local start_service_delay = 0.1
 
 rootPath = "/systemc"
@@ -740,10 +740,12 @@ function run(root, target)
 
 	loaded = true
 
-	while true do
+	while loaded do
 		local eventData = {coroutine.yield()}
+		local loaded2 = false
 		for key, val in pairs(services) do
 			if val.thread ~= nil then
+				loaded2 = true
 				coroutine.resume(val.thread, unpack(eventData))
 				if val.thread == nil or coroutine.status(val.thread) == "dead" then
 					val.status = "inactive (finished)"
@@ -753,6 +755,7 @@ function run(root, target)
 				val.status = "inactive (killed)"
 			end
 		end
+		loaded = loaded2
 		--[[for k, v in pairs(threads) do
 			if coroutine.status(k) == "dead" then
 				threads[k] = nil

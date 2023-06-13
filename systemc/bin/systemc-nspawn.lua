@@ -48,7 +48,7 @@ for i, v in ipairs(tArgs) do
 	end
 end
 
-if boot and not fs.exists(fs.combine(targetPath, fs.combine(scPath, "/bin/init"))) then
+if boot and not fs.exists(fs.combine(targetPath, fs.combine(scPath, "/bin/init.lua"))) then
 	error("Boot specified, but no init found!")
 end
 
@@ -234,7 +234,7 @@ local function sandboxFunction(func)
 
 	local chroot = {}
 	if boot then
-		chroot.init = fs.combine(scPath, fs.combine(scPath, "/bin/init"))
+		chroot.init = fs.combine(scPath, fs.combine(scPath, "/bin/init.lua"))
 	end
 	chroot.rednet = rednet
 	chroot.peripheral = peripheral

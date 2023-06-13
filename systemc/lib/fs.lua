@@ -41,6 +41,9 @@ local function save()
 end
 
 function getPerms(path)
+	if __fs.combine(path, "") == tabPath then
+		error("Access Denied")
+	end
 	if __fs.getPerms ~= nil then
 		return __fs.getPerms(path)
 	end
@@ -88,6 +91,9 @@ function getPerms(path)
 end
 
 function setPerms(path, perms)
+	if __fs.combine(path, "") == tabPath then
+		error("Access Denied")
+	end
 	if __fs.setPerms ~= nil then
 		return __fs.setPerms(path, perms)
 	end
@@ -142,9 +148,12 @@ function list (path)
 	if returnTable then
 		local ret = {}
 		for k, v in pairs(returnTable) do
-			local perms = getPerms(fs.combine(path, v))
-			if curProcess().uid == 0 or perms.owner == curProcess().uid or getGid(curProcess().uid) == perms.owner or canRead(perms.pothers) then
-				ret[k] = v
+			fullPath = fs.combine(path, v)
+			if fullPath ~= tabPath then
+				local perms = getPerms(fullPath)
+				if curProcess().uid == 0 or perms.owner == curProcess().uid or getGid(curProcess().uid) == perms.owner or canRead(perms.pothers) then
+					ret[k] = v
+				end
 			end
 		end
 		if queueSave then save() end
@@ -155,6 +164,9 @@ function list (path)
 end
 
 function exists (path)
+	if __fs.combine(path, "") == tabPath then
+		return false
+	end
 	if __fs.getPerms ~= nil then
 		return __fs.exists(path)
 	end
@@ -177,6 +189,9 @@ function isDir (path)
 end
 
 function isReadOnly (path)
+	if __fs.combine(path, "") == tabPath then
+		return false
+	end
 	if __fs.getPerms ~= nil then
 		return __fs.isReadOnly(path)
 	end
@@ -241,6 +256,9 @@ function makeDir (path)
 end
 
 function move (p1, p2)
+	if __fs.combine(p1, "") == tabPath or __fs.combine(p2, "") == tabPath then
+		return false
+	end
 	if __fs.getPerms ~= nil then
 		return __fs.move(p1, p2)
 	end
@@ -271,8 +289,10 @@ local function recursPermsCopy (p1, p2)
 			if __fs.isDir(__fs.combine(p1, k)) and __fs.isDir(__fs.combine(p2, k)) then
 				recursPermsCopy(__fs.combine(p1, k), __fs.combine(p2, k))
 			end
-			if __fs.exists(__fs.combine(p2, k)) then
-				getPerms(__fs.combine(p1, k))
+			fullPathP1 = __fs.combine(p1, k)
+			fullPathP2 = __fs.combine(p2, k)
+			if __fs.exists(fullPathP2) and fullPathP1 ~= tabPath then
+				getPerms(fullPathP1)
 				fsTable[p2][k] = copyPerms(fsTable[p1][k])
 				fsTable[p2][k].owner = curProcess().uid
 				fsTable[p2][k].group = curProcess().gid

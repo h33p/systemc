@@ -1,2 +1,2 @@
 [Service]
-ExecStart=bin/agetty --noclear
+ExecStart=bin/agetty.lua --noclear
